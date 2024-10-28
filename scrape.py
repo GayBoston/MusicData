@@ -23,7 +23,7 @@ def get_song_features(track_id):
         'artist': ', '.join([artist['name'] for artist in track['artists']]),
         'album': track['album']['name'],
         'release_date': track['album']['release_date'],
-        'genre': track['artists'][0]['genres'] if 'genres' in track['artists'][0] else None,
+        # 'genre': track['artists'][0]['genres'] if 'genres' in track['artists'][0] else None,
         'danceability': features['danceability'],
         'energy': features['energy'],
         'key': features['key'],
