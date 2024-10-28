@@ -102,6 +102,13 @@ def parse_arguments() -> argparse.Namespace:
         default=False,
         help='Visualize clusters with PCA (not useful yet)'
     )    
+
+    parser.add_argument(
+        '-k', '--k_clusters',
+        type=int,
+        default=5,
+        help='Number of clusters, defaults to 5'
+    )
     return parser.parse_args()
 
 def main(**kwargs):
@@ -135,7 +142,7 @@ def main(**kwargs):
     if (kwargs.get('elbow_method')):
         determine_optimal_k(X_scaled)
     
-    optimal_k = 7  # Set this based on the elbow method result
+    optimal_k = kwargs.get('k_clusters')  # Set this based on the elbow method result
     df['cluster'] = perform_clustering(X_scaled, optimal_k)
     
     if (kwargs.get('visualize')):
@@ -144,4 +151,4 @@ def main(**kwargs):
 
 if __name__ == "__main__":
     args = parse_arguments()
-    main(filename=args.filename, elbow_method=args.elbow_method, visualize=args.visualize)
+    main(filename=args.filename, elbow_method=args.elbow_method, visualize=args.visualize, k_clusters=args.k_clusters)

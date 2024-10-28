@@ -5,6 +5,8 @@ import argparse
 import sys
 import os
 import json
+import time
+from spotipy.exceptions import SpotifyException
 
 # ==========================
 # Configuration and Settings
@@ -103,54 +105,117 @@ def get_playlist_track_ids(sp: spotipy.Spotify, playlist_id: str) -> list:
         print(f"Unexpected error while fetching playlist tracks: {e}", file=sys.stderr)
         return []
 
-def get_song_features(sp: spotipy.Spotify, track_id: str) -> dict:
+# def get_song_features(sp: spotipy.Spotify, track_id: str) -> dict:
+#     """
+#     Retrieves audio features and track information for a given track ID.
+
+#     Args:
+#         sp (spotipy.Spotify): Authenticated Spotify client.
+#         track_id (str): Spotify Track ID.
+
+#     Returns:
+#         dict: A dictionary containing song data.
+#     """
+#     try:
+#         # Get audio features
+#         features = sp.audio_features(track_id)[0]
+#         if features is None:
+#             raise ValueError("No audio features found.")
+    
+#         # Get track information
+#         track = sp.track(track_id)
+    
+#         song_data = {
+#             'id': track_id,
+#             'name': track['name'],
+#             'artist': ', '.join([artist['name'] for artist in track['artists']]),
+#             'album': track['album']['name'],
+#             'release_date': track['album']['release_date'],
+#             # 'genre': track['artists'][0]['genres'] if 'genres' in track['artists'][0] else None,
+#             'danceability': features['danceability'],
+#             'energy': features['energy'],
+#             'key': features['key'],
+#             'loudness': features['loudness'],
+#             'mode': features['mode'],
+#             'speechiness': features['speechiness'],
+#             'acousticness': features['acousticness'],
+#             'instrumentalness': features['instrumentalness'],
+#             'liveness': features['liveness'],
+#             'valence': features['valence'],
+#             'tempo': features['tempo'],
+#             'duration_ms': features['duration_ms'],
+#             'time_signature': features['time_signature'],
+#             'popularity': track['popularity']
+#         }
+        
+#         return song_data
+#     except spotipy.SpotifyException as e:
+#         print(f"Spotify API error for track {track_id}: {e}", file=sys.stderr)
+#     except Exception as e:
+#         print(f"Error processing track {track_id}: {e}", file=sys.stderr)
+#     return {}
+
+def get_song_features(sp: spotipy.Spotify, track_id: str, max_retries: int = 5) -> dict:
     """
-    Retrieves audio features and track information for a given track ID.
+    Retrieves audio features and track information for a given track ID, handling 429 errors with retries.
 
     Args:
         sp (spotipy.Spotify): Authenticated Spotify client.
         track_id (str): Spotify Track ID.
+        max_retries (int): Maximum number of retry attempts for 429 errors.
 
     Returns:
         dict: A dictionary containing song data.
     """
-    try:
-        # Get audio features
-        features = sp.audio_features(track_id)[0]
-        if features is None:
-            raise ValueError("No audio features found.")
-    
-        # Get track information
-        track = sp.track(track_id)
-    
-        song_data = {
-            'id': track_id,
-            'name': track['name'],
-            'artist': ', '.join([artist['name'] for artist in track['artists']]),
-            'album': track['album']['name'],
-            'release_date': track['album']['release_date'],
-            # 'genre': track['artists'][0]['genres'] if 'genres' in track['artists'][0] else None,
-            'danceability': features['danceability'],
-            'energy': features['energy'],
-            'key': features['key'],
-            'loudness': features['loudness'],
-            'mode': features['mode'],
-            'speechiness': features['speechiness'],
-            'acousticness': features['acousticness'],
-            'instrumentalness': features['instrumentalness'],
-            'liveness': features['liveness'],
-            'valence': features['valence'],
-            'tempo': features['tempo'],
-            'duration_ms': features['duration_ms'],
-            'time_signature': features['time_signature'],
-            'popularity': track['popularity']
-        }
+    retries = 0
+    while retries <= max_retries:
+        try:
+            # Get audio features
+            features = sp.audio_features(track_id)[0]
+            if features is None:
+                raise ValueError("No audio features found.")
         
-        return song_data
-    except spotipy.SpotifyException as e:
-        print(f"Spotify API error for track {track_id}: {e}", file=sys.stderr)
-    except Exception as e:
-        print(f"Error processing track {track_id}: {e}", file=sys.stderr)
+            # Get track information
+            track = sp.track(track_id)
+        
+            song_data = {
+                'id': track_id,
+                'name': track['name'],
+                'artist': ', '.join([artist['name'] for artist in track['artists']]),
+                'album': track['album']['name'],
+                'release_date': track['album']['release_date'],
+                # 'genre': track['artists'][0]['genres'] if 'genres' in track['artists'][0] else None,
+                'danceability': features['danceability'],
+                'energy': features['energy'],
+                'key': features['key'],
+                'loudness': features['loudness'],
+                'mode': features['mode'],
+                'speechiness': features['speechiness'],
+                'acousticness': features['acousticness'],
+                'instrumentalness': features['instrumentalness'],
+                'liveness': features['liveness'],
+                'valence': features['valence'],
+                'tempo': features['tempo'],
+                'duration_ms': features['duration_ms'],
+                'time_signature': features['time_signature'],
+                'popularity': track['popularity']
+            }
+        
+            return song_data
+
+        except SpotifyException as e:
+            if e.http_status == 429:
+                retry_after = int(e.headers.get('Retry-After', 5))
+                print(f"Rate limit exceeded. Retrying after {retry_after} seconds...", file=sys.stderr)
+                time.sleep(retry_after)
+                retries += 1
+            else:
+                print(f"Spotify API error for track {track_id}: {e}", file=sys.stderr)
+                break
+        except Exception as e:
+            print(f"Error processing track {track_id}: {e}", file=sys.stderr)
+            break
+    print(f"Max retries reached for track {track_id}. Skipping...", file=sys.stderr)
     return {}
 
 def process_playlist(sp: spotipy.Spotify, playlist_id: str) -> list:
