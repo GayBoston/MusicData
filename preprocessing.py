@@ -4,174 +4,144 @@ from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 import seaborn as sns
+import argparse
+import sys
 
-# Load the dataset
-df = pd.read_csv('top_50_data.csv')
+DEFAULT_CSV = 'songs_dataset_official.csv'
 
-# Handle missing values
-df = df.dropna()
+def load_data(file_path):
+    """Load the dataset and handle missing values."""
+    df = pd.read_csv(file_path)
+    return df.dropna()
 
-# 1. Select Features for Clustering
-features = ['danceability', 'energy', 'key', 'loudness', 'mode',
-            'speechiness', 'acousticness', 'instrumentalness',
-            'liveness', 'valence', 'tempo', 'duration_ms', 'time_signature', 'popularity']
+def select_features(df):
+    """Select relevant features for clustering."""
+    features = ['danceability', 'energy', 'key', 'loudness', 'mode',
+                'speechiness', 'acousticness', 'instrumentalness',
+                'liveness', 'valence', 'tempo', 'duration_ms', 
+                'time_signature', 'popularity']
+    return df[features].copy(), features
 
-X = df[features].copy()
+def apply_weights(X, weights):
+    """Apply weights to the selected features."""
+    for feature in X.columns:
+        X[feature] = X[feature] * weights.get(feature, 1.0)
+    return X
 
-# 2. Define Weights for Features
-# Assign higher weights to 'danceability' and 'energy'
-weights = {
-    'danceability': 1.0,  # Emphasize this feature
-    'energy': 1.0,         # Emphasize this feature
-    # Assign default weight of 1.0 to other features
-    'key': 1.0,
-    'loudness': 1.0,
-    'mode': 1.0,
-    'speechiness': 1.0,
-    'acousticness': 1.0,
-    'instrumentalness': 1.0,
-    'liveness': 1.0,
-    'valence': 1.0,
-    'tempo': 1.0,
-    'duration_ms': 1.0,
-    'time_signature': 1.0,
-    'popularity': 1.0
-}
+def scale_features(X):
+    """Scale features using StandardScaler."""
+    scaler = StandardScaler()
+    return scaler.fit_transform(X)
 
-# 3. Apply Weights to Features
-for feature in features:
-    X[feature] = X[feature] * weights.get(feature, 1.0)
+def determine_optimal_k(X_scaled):
+    """Determine the optimal number of clusters using the elbow method."""
+    wcss = []
+    K = range(1, 50)
+    
+    for k in K:
+        kmeans = KMeans(n_clusters=k, random_state=42)
+        kmeans.fit(X_scaled)
+        wcss.append(kmeans.inertia_)
+    
+    plt.figure(figsize=(10, 6))
+    plt.plot(K, wcss, 'bx-')
+    plt.xlabel('Number of clusters (k)')
+    plt.ylabel('Within-cluster Sum of Squares (WCSS)')
+    plt.title('Elbow Method for Optimal k')
+    plt.show()
 
-# 4. Feature Scaling
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X)
+def perform_clustering(X_scaled, optimal_k):
+    """Perform K-Means clustering and add cluster labels to the DataFrame."""
+    kmeans = KMeans(n_clusters=optimal_k, random_state=42)
+    return kmeans.fit_predict(X_scaled)
 
-# wcss = []
-# K = range(1, 50)
+def visualize_clusters(X_scaled, df):
+    """Visualize the clusters using PCA."""
+    pca = PCA(n_components=2)
+    principal_components = pca.fit_transform(X_scaled)
+    df['pc1'] = principal_components[:, 0]
+    df['pc2'] = principal_components[:, 1]
+    
+    plt.figure(figsize=(10, 8))
+    sns.scatterplot(data=df, x='pc1', y='pc2', hue='cluster', palette='Set1', alpha=0.7)
+    plt.title('Song Clusters with Emphasized Features')
+    plt.xlabel('Principal Component 1')
+    plt.ylabel('Principal Component 2')
+    plt.legend(title='Cluster')
+    plt.show()
 
-# for k in K:
-#     kmeans = KMeans(n_clusters=k, random_state=42)
-#     kmeans.fit(X_scaled)
-#     wcss.append(kmeans.inertia_)
+def display_cluster_songs(df):
+    """Display songs in each cluster."""
+    unique_clusters = df['cluster'].unique()
+    
+    for cluster in unique_clusters:
+        print(f"\n--- Cluster {cluster} ---")
+        cluster_df = df[df['cluster'] == cluster]
+        print(cluster_df[['name', 'artist', 'album']].to_string(index=True))
 
-# # Plot the results
-# plt.figure(figsize=(10,6))
-# plt.plot(K, wcss, 'bx-')
-# plt.xlabel('Number of clusters (k)')
-# plt.ylabel('Within-cluster Sum of Squares (WCSS)')
-# plt.title('Elbow Method for Optimal k')
-# plt.show()
+def parse_arguments() -> argparse.Namespace:
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(description="Preprocess and cluster songs")
+    parser.add_argument(
+        '-f', '--filename',
+        type=str,
+        default=DEFAULT_CSV,
+        help='CSV file containing songs'
+    )
 
-# 5. Clustering with K-Means
-optimal_k = 7
-kmeans = KMeans(n_clusters=optimal_k, random_state=42)
-df['cluster'] = kmeans.fit_predict(X_scaled)
+    parser.add_argument(
+        '-e', '--elbow_method',
+        type=bool,
+        default=False,
+        help='Elbow method for finding optimal clusters'
+    )
 
-# # 6. Visualization (Optional)
-# pca = PCA(n_components=2)
-# principal_components = pca.fit_transform(X_scaled)
-# df['pc1'] = principal_components[:, 0]
-# df['pc2'] = principal_components[:, 1]
+    parser.add_argument(
+        '-v', '--visualize',
+        type=bool,
+        default=False,
+        help='Visualize clusters with PCA (not useful yet)'
+    )    
+    return parser.parse_args()
 
-# plt.figure(figsize=(10,8))
-# sns.scatterplot(data=df, x='pc1', y='pc2', hue='cluster', palette='Set1', alpha=0.7)
-# plt.title('Song Clusters with Emphasized Features')
-# plt.xlabel('Principal Component 1')
-# plt.ylabel('Principal Component 2')
-# plt.legend(title='Cluster')
-# plt.show()
+def main(**kwargs):
+    """Main function to execute the clustering analysis."""
+    file_path = kwargs.get('filename', DEFAULT_CSV)
+    
+    df = load_data(file_path)
+    
+    X, features = select_features(df)
+    
+    weights = {
+        'danceability': 1.0,
+        'energy': 1.0,
+        'key': 1.0,
+        'loudness': 1.0,
+        'mode': 1.0,
+        'speechiness': 1.0,
+        'acousticness': 1.0,
+        'instrumentalness': 1.0,
+        'liveness': 1.0,
+        'valence': 1.0,
+        'tempo': 1.0,
+        'duration_ms': 1.0,
+        'time_signature': 1.0,
+        'popularity': 1.0
+    }
+    
+    X_weighted = apply_weights(X, weights)
+    X_scaled = scale_features(X_weighted)
+    
+    if (kwargs.get('elbow_method')):
+        determine_optimal_k(X_scaled)
+    
+    optimal_k = 7  # Set this based on the elbow method result
+    df['cluster'] = perform_clustering(X_scaled, optimal_k)
+    
+    if (kwargs.get('visualize')):
+        visualize_clusters(X_scaled, df)
+    display_cluster_songs(df)
 
-# Get the unique cluster labels
-unique_clusters = df['cluster'].unique()
-
-# Iterate through each cluster and display songs
-for cluster in unique_clusters:
-    print(f"\n--- Cluster {cluster} ---")
-    cluster_df = df[df['cluster'] == cluster]
-    print(cluster_df[['name', 'artist', 'album']].to_string(index=True))
-
-# import pandas as pd
-
-# # Load the dataset
-# df = pd.read_csv('songs_dataset_official.csv')
-
-# # Handle missing values
-# df = df.dropna()
-
-# # Select features for clustering
-# features = ['danceability', 'energy', 'key', 'loudness', 'mode',
-#             'speechiness', 'acousticness', 'instrumentalness',
-#             'liveness', 'valence', 'tempo', 'duration_ms', 'time_signature', 'popularity']
-
-# X = df[features]
-
-# # Feature Scaling
-# from sklearn.preprocessing import StandardScaler
-
-# scaler = StandardScaler()
-# X_scaled = scaler.fit_transform(X)
-
-# import matplotlib.pyplot as plt
-# from sklearn.cluster import KMeans
-
-# wcss = []
-# K = range(1, 50)
-
-# for k in K:
-#     kmeans = KMeans(n_clusters=k, random_state=42)
-#     kmeans.fit(X_scaled)
-#     wcss.append(kmeans.inertia_)
-
-# # Plot the results
-# plt.figure(figsize=(10,6))
-# plt.plot(K, wcss, 'bx-')
-# plt.xlabel('Number of clusters (k)')
-# plt.ylabel('Within-cluster Sum of Squares (WCSS)')
-# plt.title('Elbow Method for Optimal k')
-# plt.show()
-
-# # Assume optimal k is 5
-# optimal_k = 20
-# kmeans = KMeans(n_clusters=optimal_k, random_state=42)
-# df['cluster'] = kmeans.fit_predict(X_scaled)
-
-
-# # View cluster centers
-# cluster_centers = scaler.inverse_transform(kmeans.cluster_centers_)
-# cluster_centers_df = pd.DataFrame(cluster_centers, columns=features)
-# print(cluster_centers_df)
-
-# # Get the unique cluster labels
-# unique_clusters = df['cluster'].unique()
-
-# # Iterate through each cluster and display songs
-# for cluster in unique_clusters:
-#     print(f"\n--- Cluster {cluster} ---")
-#     cluster_df = df[df['cluster'] == cluster]
-#     print(cluster_df[['name', 'artist', 'album']].to_string(index=True))
-
-
-
-# # # Visualize clusters using PCA for dimensionality reduction
-# # from sklearn.decomposition import PCA
-# # import seaborn as sns
-
-# # pca = PCA(n_components=2)
-# # principal_components = pca.fit_transform(X_scaled)
-# # df['pc1'] = principal_components[:, 0]
-# # df['pc2'] = principal_components[:, 1]
-
-# # plt.figure(figsize=(10,8))
-# # sns.scatterplot(data=df, x='pc1', y='pc2', hue='cluster', palette='Set1')
-# # plt.title('Song Clusters Visualized with PCA')
-# # plt.show()
-
-# # Select numerical features used for clustering
-# features = ['danceability', 'energy', 'key', 'loudness', 'mode',
-#             'speechiness', 'acousticness', 'instrumentalness',
-#             'liveness', 'valence', 'tempo', 'duration_ms', 'time_signature', 'popularity']
-
-# # Group by cluster and compute mean for each feature
-# cluster_summary = df.groupby('cluster')[features].mean().reset_index()
-
-# print(cluster_summary)
+if __name__ == "__main__":
+    args = parse_arguments()
+    main(filename=args.filename, elbow_method=args.elbow_method, visualize=args.visualize)
