@@ -128,13 +128,25 @@ def get_song_features(sp: spotipy.Spotify, track_id: str, max_retries: int = 5) 
             # Get track information
             track = sp.track(track_id)
         
+            # Initialize genres list
+            genres = []
+            for artist in track['artists']:
+                artist_id = artist['id']
+                if artist_id:
+                    artist_info = sp.artist(artist_id)
+                    genres.extend(artist_info.get('genres', []))
+            
+            # Remove duplicates by converting to a set
+            genres = list(set(genres))
+            genres_str = ', '.join(genres) if genres else None
+        
             song_data = {
                 'id': track_id,
                 'name': track['name'],
                 'artist': ', '.join([artist['name'] for artist in track['artists']]),
                 'album': track['album']['name'],
                 'release_date': track['album']['release_date'],
-                # 'genre': track['artists'][0]['genres'] if 'genres' in track['artists'][0] else None,
+                'genres': genres_str,  # Added genres
                 'danceability': features['danceability'],
                 'energy': features['energy'],
                 'key': features['key'],
@@ -150,6 +162,8 @@ def get_song_features(sp: spotipy.Spotify, track_id: str, max_retries: int = 5) 
                 'time_signature': features['time_signature'],
                 'popularity': track['popularity']
             }
+
+            # print(song_data['genres'])
         
             return song_data
 
@@ -167,6 +181,7 @@ def get_song_features(sp: spotipy.Spotify, track_id: str, max_retries: int = 5) 
             break
     print(f"Max retries reached for track {track_id}. Skipping...", file=sys.stderr)
     return {}
+
 
 def process_playlist(sp: spotipy.Spotify, playlist_id: str) -> list:
     """
